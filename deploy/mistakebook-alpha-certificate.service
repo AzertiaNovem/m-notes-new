@@ -1,0 +1,8 @@
+[Unit]
+Description=Reload Nginx after the Mistakebook Alpha TLS certificate changes
+After=nginx.service
+
+[Service]
+Type=oneshot
+ExecCondition=/usr/sbin/nginx -t -q
+ExecStart=/usr/bin/systemctl reload nginx

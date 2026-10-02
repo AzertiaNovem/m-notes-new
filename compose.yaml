@@ -1,0 +1,13 @@
+services:
+  mistakebook:
+    build: .
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080,http://127.0.0.1:8080}
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8080}
+    volumes:
+      - mistakebook-data:/app/data
+    restart: unless-stopped
+volumes:
+  mistakebook-data:

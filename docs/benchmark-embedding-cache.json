@@ -1,0 +1,60 @@
+{
+  "benchmark": "mistakebook-native synthetic embedding cache benchmark",
+  "body_bytes_per_note": 1281,
+  "checksum": 0.13069171272218227,
+  "compiler": "Apple LLVM 21.0.0 (clang-2100.1.1.101)",
+  "corpus_notes": 1500,
+  "created_at": "2026-10-02T13:18:02Z",
+  "encoding": {
+    "cache": {
+      "bypassed": 0,
+      "entries": 1500,
+      "estimated_bytes": 5772780,
+      "evictions": 0,
+      "hits": 7500,
+      "max_bytes": 33554432,
+      "max_entries": 8192,
+      "max_key_bytes": 65536,
+      "misses": 1500
+    },
+    "cold_ms": 34.015166,
+    "ratio": 113.17940920071072,
+    "warm_median_ms": 0.300542
+  },
+  "rag_search": {
+    "cache": {
+      "bypassed": 0,
+      "entries": 1501,
+      "estimated_bytes": 5822912,
+      "evictions": 0,
+      "hits": 7505,
+      "max_bytes": 33554432,
+      "max_entries": 8192,
+      "max_key_bytes": 65536,
+      "misses": 1501
+    },
+    "cold_median_ms": 60.844875,
+    "identical_results": true,
+    "ratio": 2.0636486583882006,
+    "warm_median_ms": 29.484125
+  },
+  "related_candidates": {
+    "cache": {
+      "bypassed": 0,
+      "entries": 1500,
+      "estimated_bytes": 5824560,
+      "evictions": 0,
+      "hits": 7500,
+      "max_bytes": 33554432,
+      "max_entries": 8192,
+      "max_key_bytes": 65536,
+      "misses": 1500
+    },
+    "cold_median_ms": 51.312,
+    "identical_results": true,
+    "ratio": 2.9371845375826187,
+    "warm_median_ms": 17.469791
+  },
+  "scope": "Same C++ implementation, synthetic in-memory SQLite corpus. Cold means embedding cache cleared; SQLite page cache is warm. No comparison against the original Node implementation; not a disk-I/O or concurrent-load benchmark.",
+  "warm_rounds": 5
+}

@@ -1,0 +1,16 @@
+{
+  "name": "mistakebook-native",
+  "private": true,
+  "version": "0.2.0",
+  "packageManager": "pnpm@11.22.0",
+  "scripts": {
+    "dev:web": "pnpm --filter @mistakebook/web dev",
+    "build:web": "pnpm --filter @mistakebook/web build",
+    "build:api": "cmake -S backend -B backend/build -DCMAKE_BUILD_TYPE=Release && cmake --build backend/build -j 4",
+    "dev:api": "./backend/build/mistakebook",
+    "build": "pnpm build:api && pnpm build:web",
+    "test": "node --test tests/*.mjs",
+    "test:cpp": "ctest --test-dir backend/build --output-on-failure",
+    "typecheck": "pnpm --filter @mistakebook/web exec tsc --noEmit"
+  }
+}

@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch the shared TLS certificate used by Mistakebook Alpha
+
+[Path]
+PathChanged=/root/.acme.sh/missazertia.com_ecc/fullchain.cer
+Unit=mistakebook-alpha-certificate.service
+
+[Install]
+WantedBy=multi-user.target
