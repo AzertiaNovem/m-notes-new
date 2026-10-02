@@ -10,7 +10,7 @@ Alpha 后端已独立部署到 `https://m-notes-alpha.missazertia.com`，运行�
 
 ## 本机启动
 
-需要 C++20 编译器、CMake、pkg-config、SQLite（FTS5 和 JSON1）、libsodium、nlohmann-json，以及用于前端构建的 Node 22+ 和 pnpm 11。
+需要 C++20 编译器、CMake、pkg-config、SQLite（FTS5 和 JSON1）、libsodium、nlohmann-json，以及用于前端构建的 Node 22.13+ 和 pnpm 11。
 
 macOS 安装编译依赖：
 
@@ -52,6 +52,26 @@ docker compose up --build -d
 ```
 
 这是单个应用容器，SQLite 仍然嵌入 C++ 进程，数据通过命名卷持久保存。默认只映射本机 8080。对外提供服务时用 HTTPS 反向代理，并将 `CORS_ORIGINS` 设置为实际前端来源。容器配方已提供；本次本机环境没有 Docker，验证的是原生构建。
+
+## Cloudflare 前端自动部署
+
+仓库根目录的 `wrangler.jsonc` 将 `packages/web/dist` 部署为 Workers 静态资源，并为 React Router 启用 SPA 回退。后端继续通过 `https://m-notes-alpha.missazertia.com` 提供 API。
+
+在 Workers & Pages 中连接 GitHub 仓库 `AzertiaNovem/m-notes-new`，项目名称使用 `m-notes-new`，生产分支选择 `main`，根目录留空。构建命令填写 `pnpm build:web`，部署命令填写 `npx wrangler deploy`；启用预览时保留 `npx wrangler preview`。API 令牌可以选择“创建新令牌”，由 Cloudflare 为构建生成。
+
+在构建变量中分别添加以下值：
+
+```dotenv
+NODE_VERSION=24.18.0
+PNPM_VERSION=11.22.0
+VITE_API_BASE_URL=https://m-notes-alpha.missazertia.com
+```
+
+这些值用于构建，不是 Worker 运行时绑定。API 地址不要追加 `/api/v1`；改值后需要重新构建。不要将构建命令改为 `pnpm build`，因为它还会编译 C++。连接 Git 后，推送到生产分支会触发前端更新。
+
+部署完成后，将实际的 `https://…workers.dev` 或前端自定义域名追加到服务器 `/etc/mistakebook-alpha/environment` 的 `CORS_ORIGINS`，用英文逗号分隔，不加空格或末尾斜杠，再执行 `systemctl restart mistakebook-alpha`。保留现有的后端来源。当前 CORS 只支持精确 origin 匹配，每个预览来源需要单独放行；未经配置的预览页面能加载，但 API 请求会被拒绝。前端自定义域名应与当前后端域名不同。
+
+如果使用 Pages，根目录、构建命令和构建变量相同，输出目录填写 `packages/web/dist`，不需要 Workers 部署命令；Pages 默认提供 SPA 回退。配置参考 [Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/) 和 [Workers 构建环境](https://developers.cloudflare.com/workers/ci-cd/builds/build-image/)。
 
 ## 存储与性能
 
