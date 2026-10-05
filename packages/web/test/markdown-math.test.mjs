@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeMarkdownMath, normalizeTitleMath } from '../packages/shared/src/markdown-math.ts';
+import { normalizeMarkdownMath, normalizeTitleMath } from '../../shared/src/markdown-math.ts';
 
 test('bare title formulas keep surrounding Chinese phrases and normalize operators', () => {
   assert.equal(normalizeMarkdownMath('分式递推：a_{n+1}=2a_n/(a_n+2)，取倒数化等差'),

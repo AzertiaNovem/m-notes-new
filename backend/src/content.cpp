@@ -29,6 +29,242 @@ std::string lower(std::string s) {
       c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
   return s;
 }
+bool escaped_at(const std::string &value, size_t position) {
+  size_t backslashes = 0;
+  while (position > 0 && value[--position] == '\\')
+    ++backslashes;
+  return backslashes % 2 != 0;
+}
+size_t delimiter_run(const std::string &value, size_t position, char delimiter) {
+  size_t end = position;
+  while (end < value.size() && value[end] == delimiter)
+    ++end;
+  return end - position;
+}
+struct MarkdownLinePrefix {
+  size_t content, quotes = 0, indent = 0, list_indent = 0;
+};
+MarkdownLinePrefix markdown_line_prefix(const std::string &value, size_t start) {
+  MarkdownLinePrefix prefix{start};
+  size_t base = start;
+  for (;;) {
+    size_t cursor = base;
+    while (cursor < value.size() && value[cursor] == ' ')
+      ++cursor;
+    if (cursor - base <= 3 && cursor < value.size() && value[cursor] == '>') {
+      ++prefix.quotes;
+      base = cursor + 1;
+      if (base < value.size() && value[base] == ' ')
+        ++base;
+      continue;
+    }
+    prefix.content = cursor;
+    prefix.indent = cursor - base;
+    break;
+  }
+  size_t marker = prefix.content;
+  if (marker < value.size()) {
+    if (value[marker] == '-' || value[marker] == '*' || value[marker] == '+')
+      ++marker;
+    else {
+      while (marker < value.size() && marker - prefix.content < 9 && value[marker] >= '0' &&
+             value[marker] <= '9')
+        ++marker;
+      if (marker > prefix.content && marker < value.size() && (value[marker] == '.' || value[marker] == ')'))
+        ++marker;
+      else
+        marker = prefix.content;
+    }
+    if (marker > prefix.content && marker < value.size() && (value[marker] == ' ' || value[marker] == '\t')) {
+      while (marker < value.size() && (value[marker] == ' ' || value[marker] == '\t'))
+        ++marker;
+      prefix.list_indent = marker - base;
+      prefix.content = marker;
+    }
+  }
+  return prefix;
+}
+bool highlight_body_present(const std::string &value) {
+  // Match JavaScript's String.trim(), including common copied Unicode spaces.
+  for (size_t i = 0; i < value.size();) {
+    unsigned char c = value[i++];
+    uint32_t codepoint = c;
+    size_t continuation = c < 0x80 ? 0 : ((c & 0xe0) == 0xc0 ? 1 : ((c & 0xf0) == 0xe0 ? 2 : 3));
+    if (continuation) {
+      codepoint = c & (continuation == 1 ? 0x1f : (continuation == 2 ? 0x0f : 0x07));
+      if (i + continuation > value.size())
+        return true;
+      while (continuation--)
+        codepoint = (codepoint << 6) | (static_cast<unsigned char>(value[i++]) & 0x3f);
+    }
+    bool space = (codepoint >= 0x09 && codepoint <= 0x0d) || codepoint == 0x20 || codepoint == 0xa0 ||
+                 codepoint == 0x1680 || (codepoint >= 0x2000 && codepoint <= 0x200a) || codepoint == 0x2028 ||
+                 codepoint == 0x2029 || codepoint == 0x202f || codepoint == 0x205f || codepoint == 0x3000 ||
+                 codepoint == 0xfeff;
+    if (!space)
+      return true;
+  }
+  return false;
+}
+// Highlight syntax belongs to Markdown text, never to literal code or math.
+// Keep a compact byte mask so a highlight can wrap an inline literal without
+// interpreting an apparent closing marker inside that literal.
+std::vector<unsigned char> literal_markdown(const std::string &value) {
+  std::vector<unsigned char> literal(value.size(), 0);
+  bool indented_code = false;
+  auto protect = [&](size_t begin, size_t end, unsigned char kind) {
+    std::fill(literal.begin() + begin, literal.begin() + end, kind);
+    return end;
+  };
+  for (size_t i = 0; i < value.size();) {
+    if (i == 0 || value[i - 1] == '\n') {
+      const auto prefix = markdown_line_prefix(value, i);
+      size_t indent = prefix.content;
+      size_t previous = i > 1 ? value.rfind('\n', i - 2) : std::string::npos;
+      previous = previous == std::string::npos ? 0 : previous + 1;
+      bool after_blank = i == 0 || normalize(value.substr(previous, i - previous)).empty();
+      bool blank = normalize(value.substr(i, value.find('\n', i) - i)).empty();
+      if ((prefix.indent >= 4 || (indent < value.size() && value[indent] == '\t')) &&
+          (indented_code || after_blank)) {
+        auto end = value.find('\n', i);
+        i = protect(i, end == std::string::npos ? value.size() : end + 1, 2);
+        indented_code = true;
+        continue;
+      }
+      if (!blank)
+        indented_code = false;
+      if ((prefix.indent <= 3 || prefix.list_indent) && indent < value.size() &&
+          (value[indent] == '`' || value[indent] == '~' || value[indent] == '$')) {
+        char delimiter = value[indent];
+        size_t run = delimiter_run(value, indent, delimiter);
+        if (run >= (delimiter == '$' ? 2 : 3)) {
+          size_t first_end = value.find('\n', indent + run);
+          auto tail = value.substr(indent + run, first_end - (indent + run));
+          // Display math opens on its own line; $$x$$ remains inline math.
+          bool block = delimiter != '$' || normalize(tail).empty();
+          if (delimiter == '`' && tail.find('`') != std::string::npos)
+            block = false;
+          if (block) {
+            size_t end = value.size();
+            size_t line = first_end == std::string::npos ? end : first_end + 1;
+            while (line < value.size()) {
+              const auto closing = markdown_line_prefix(value, line);
+              size_t fence = closing.content;
+              auto line_end = value.find('\n', line);
+              bool line_blank = normalize(value.substr(line, line_end - line)).empty();
+              if (!line_blank && (closing.quotes < prefix.quotes ||
+                                  (prefix.list_indent && closing.indent < prefix.list_indent))) {
+                end = line;
+                break;
+              }
+              size_t count = delimiter_run(value, fence, delimiter);
+              if (closing.quotes == prefix.quotes && !closing.list_indent &&
+                  closing.indent <= (prefix.list_indent ? prefix.list_indent + 3 : 3) && count >= run &&
+                  normalize(value.substr(fence + count, line_end - (fence + count))).empty()) {
+                end = line_end == std::string::npos ? value.size() : line_end + 1;
+                break;
+              }
+              line = line_end == std::string::npos ? value.size() : line_end + 1;
+            }
+            i = protect(i, end, 2);
+            continue;
+          }
+        }
+      }
+    }
+    if ((value[i] == '`' || value[i] == '$') && !escaped_at(value, i)) {
+      char delimiter = value[i];
+      size_t run = delimiter_run(value, i, delimiter), cursor = i + run;
+      bool found = false;
+      while ((cursor = value.find(delimiter, cursor)) != std::string::npos) {
+        size_t count = delimiter_run(value, cursor, delimiter);
+        if (count == run && (delimiter == '`' || !escaped_at(value, cursor))) {
+          i = protect(i, cursor + count, 1);
+          found = true;
+          break;
+        }
+        cursor += count;
+      }
+      if (!found)
+        i += run;
+      continue;
+    }
+    if (value[i] == '\\' && i + 1 < value.size() && (value[i + 1] == '(' || value[i + 1] == '[') &&
+        !escaped_at(value, i)) {
+      auto closer = value[i + 1] == '(' ? "\\)" : "\\]";
+      size_t end = value.find(closer, i + 2);
+      while (end != std::string::npos && escaped_at(value, end))
+        end = value.find(closer, end + 2);
+      if (end != std::string::npos) {
+        i = protect(i, end + 2, value[i + 1] == '[' ? 2 : 1);
+        continue;
+      }
+    }
+    ++i;
+  }
+  return literal;
+}
+size_t highlight_name_end(const std::string &value, size_t start) {
+  size_t end = start;
+  while (end < value.size()) {
+    unsigned char c = value[end];
+    if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) {
+      ++end;
+      continue;
+    }
+    if (c >= 0xe0 && c <= 0xef && end + 2 < value.size()) {
+      unsigned char second = value[end + 1], third = value[end + 2];
+      if ((second & 0xc0) == 0x80 && (third & 0xc0) == 0x80) {
+        auto codepoint = ((c & 0x0f) << 12) | ((second & 0x3f) << 6) | (third & 0x3f);
+        if (codepoint >= 0x4e00 && codepoint <= 0x9fff) {
+          end += 3;
+          continue;
+        }
+      }
+    }
+    break;
+  }
+  return end;
+}
+std::string without_highlights(const std::string &value) {
+  if (value.find("==") == std::string::npos)
+    return value;
+  const auto literal = literal_markdown(value);
+  std::vector<size_t> markers;
+  for (size_t i = value.find("=="); i != std::string::npos; i = value.find("==", i + 2))
+    if (!literal[i] && !literal[i + 1])
+      markers.push_back(i);
+  std::string out;
+  out.reserve(value.size());
+  size_t copied = 0;
+  for (size_t m = 0; m < markers.size();) {
+    size_t open = markers[m], body = open + 2, name_end = highlight_name_end(value, body);
+    bool known = true;
+    if (name_end > body && name_end < value.size() && value[name_end] == ':') {
+      auto name = value.substr(body, name_end - body);
+      known = name == "yellow" || name == "red" || name == "green" || name == "blue" || name == "黄" ||
+              name == "红" || name == "绿" || name == "蓝";
+      body = name_end + 1;
+    }
+    if (m + 1 == markers.size())
+      break;
+    size_t close = markers[m + 1];
+    auto text = value.substr(body, close - body);
+    bool valid = known && highlight_body_present(text) && text.find_first_of("\r\n") == std::string::npos &&
+                 std::find(literal.begin() + body, literal.begin() + close, 2) == literal.begin() + close;
+    out.append(value, copied, open - copied);
+    if (valid)
+      out += text;
+    else
+      // Consume a rejected pair together: its closer must not become a new
+      // yellow opener and swallow the next otherwise-valid highlight.
+      out.append(value, open, close + 2 - open);
+    copied = close + 2;
+    m += 2;
+  }
+  out.append(value, copied, value.size() - copied);
+  return out;
+}
 std::vector<std::string> characters(const std::string &s) {
   std::vector<std::string> out;
   for (size_t i = 0; i < s.size();) {
@@ -697,12 +933,14 @@ std::vector<Chunk> chunks(const Json &p, const std::string &kind, const Json &al
                    0});
   };
   if (kind == "note") {
-    for (const auto &body : split_chunks(text(p, "body_md")))
+    // Remove display annotations from complete Markdown before cutting it:
+    // otherwise a long highlight would leave unclosed syntax in each chunk.
+    for (const auto &body : split_chunks(without_highlights(text(p, "body_md"))))
       add(body, "note", nullptr, nullptr);
     if (out.empty())
-      add(text(p, "title"), "note", nullptr, nullptr);
+      add(without_highlights(text(p, "title")), "note", nullptr, nullptr);
   } else {
-    auto stem_chars = characters(text(p, "stem_md"));
+    auto stem_chars = characters(without_highlights(text(p, "stem_md")));
     std::string stem;
     for (size_t i = 0; i < std::min<size_t>(stem_chars.size(), 240); ++i)
       stem += stem_chars[i];
@@ -713,18 +951,20 @@ std::vector<Chunk> chunks(const Json &p, const std::string &kind, const Json &al
           tid = t["id"];
           break;
         }
-      add(text(p, "subject") + " " + name.get<std::string>() + " " + stem, "knowledge_point", tid, name);
+      add(without_highlights(text(p, "subject")) + " " + without_highlights(name.get<std::string>()) + " " +
+              stem,
+          "knowledge_point", tid, name);
     }
     auto sol = p.value("solution", Json::object());
-    for (const auto &approach : split_chunks(text(sol, "approach_md")))
+    for (const auto &approach : split_chunks(without_highlights(text(sol, "approach_md"))))
       add(approach, "approach", nullptr, nullptr);
     // Include the stem and answer so searchable persisted content has a matching hit.
-    for (const auto &value : split_chunks(text(p, "stem_md")))
+    for (const auto &value : split_chunks(without_highlights(text(p, "stem_md"))))
       add(value, "knowledge_point", nullptr, nullptr);
-    for (const auto &value : split_chunks(text(sol, "answer_md")))
+    for (const auto &value : split_chunks(without_highlights(text(sol, "answer_md"))))
       add(value, "approach", nullptr, nullptr);
     if (out.empty())
-      add(text(p, "title"), "knowledge_point", nullptr, nullptr);
+      add(without_highlights(text(p, "title")), "knowledge_point", nullptr, nullptr);
   }
   return out;
 }
@@ -819,19 +1059,19 @@ EmbeddingCache &embedding_cache() {
   return cache;
 }
 } // namespace
-std::vector<float> hash_embedding(const std::string &value) {
+static std::vector<float> cached_embedding(const std::string &semantic) {
   auto &cache = embedding_cache();
   // Do not copy unusually large note bodies into either cache key container.
-  if (value.size() > EmbeddingCache::max_key_bytes) {
+  if (semantic.size() > EmbeddingCache::max_key_bytes) {
     {
       std::lock_guard lock(cache.mutex);
       ++cache.bypassed;
     }
-    return compute_embedding(value);
+    return compute_embedding(semantic);
   }
   {
     std::lock_guard lock(cache.mutex);
-    auto found = cache.entries.find(value);
+    auto found = cache.entries.find(semantic);
     if (found != cache.entries.end()) {
       ++cache.hits;
       cache.recent.splice(cache.recent.begin(), cache.recent, found->second.position);
@@ -841,10 +1081,10 @@ std::vector<float> hash_embedding(const std::string &value) {
   }
   // Tokenization is the expensive part: allow unrelated callers to compute
   // outside the mutex, then handle concurrent insertion of the same text.
-  auto result = compute_embedding(value);
-  size_t bytes = 2 * (value.size() + 1) + result.capacity() * sizeof(float) + 256;
+  auto result = compute_embedding(semantic);
+  size_t bytes = 2 * (semantic.size() + 1) + result.capacity() * sizeof(float) + 256;
   std::lock_guard lock(cache.mutex);
-  auto found = cache.entries.find(value);
+  auto found = cache.entries.find(semantic);
   if (found != cache.entries.end()) {
     cache.recent.splice(cache.recent.begin(), cache.recent, found->second.position);
     return found->second.vector;
@@ -857,15 +1097,22 @@ std::vector<float> hash_embedding(const std::string &value) {
     cache.recent.pop_back();
     ++cache.evictions;
   }
-  cache.recent.push_front(value);
+  cache.recent.push_front(semantic);
   try {
-    cache.entries.emplace(value, EmbeddingCacheEntry{result, cache.recent.begin(), bytes});
+    cache.entries.emplace(semantic, EmbeddingCacheEntry{result, cache.recent.begin(), bytes});
   } catch (...) {
     cache.recent.pop_front();
     throw;
   }
   cache.bytes += bytes;
   return result;
+}
+std::vector<float> hash_embedding(const std::string &value) {
+  // Use semantic text both for feature hashing and the LRU key. Changing only
+  // the display color must not change search scores or automatic note links.
+  if (value.find("==") == std::string::npos)
+    return cached_embedding(value);
+  return cached_embedding(without_highlights(value));
 }
 Json embedding_cache_stats() {
   auto &cache = embedding_cache();
@@ -988,8 +1235,11 @@ Json content_search(Store &s, const Json &body) {
       for (const auto &row : rows) {
         cursor = number(row, "id");
         auto p = hydrate(row);
+        auto title = without_highlights(text(p, "title"));
         for (auto &c : chunks(p, text(row, "type"), all_tags)) {
-          c.score = dot(query_vector, hash_embedding(text(p, "title") + " " + text(c.hit, "text")));
+          // chunks() has already parsed complete Markdown. Do not parse a
+          // truncated math/code literal again after its delimiters are cut.
+          c.score = dot(query_vector, cached_embedding(title + " " + text(c.hit, "text")));
           if (c.score > 0)
             vector_ranked.push_back(std::move(c));
         }

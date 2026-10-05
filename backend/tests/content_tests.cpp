@@ -56,9 +56,172 @@ Json create_body(std::string title = "勾股定理练习", std::string tag = "�
 std::string pid(const Json &p) {
   return "problems/" + std::to_string(number(p, "id"));
 }
+void highlight_similarity_tests() {
+  clear_embedding_cache();
+  const auto plain = hash_embedding("直角三角形勾股定理 $a^2+b^2=c^2$");
+  for (const std::string prefix : {"", "yellow:", "red:", "green:", "blue:", "黄:", "红:", "绿:", "蓝:"})
+    check(hash_embedding("==" + prefix + "直角三角形勾股定理 $a^2+b^2=c^2$==") == plain,
+          "all highlight colors and aliases preserve exactly the same vector");
+  auto cache = embedding_cache_stats();
+  check(number(cache, "entries") == 1 && number(cache, "misses") == 1 && number(cache, "hits") == 9,
+        "color-only changes share the semantic cache key");
+  check(hash_embedding("==red:甲====green:乙==") == hash_embedding("甲乙"),
+        "adjacent colored markers do not add separators");
+  check(hash_embedding("题目 ==red:$a==b$==，使用 ==blue:`a==b`==") ==
+            hash_embedding("题目 $a==b$，使用 `a==b`"),
+        "outer highlight preserves inline math and code containing apparent closers");
+  check(hash_embedding("==red:`==green:literal==`==") == hash_embedding("`==green:literal==`"),
+        "a highlight can wrap code without interpreting its literal markers");
+  check(hash_embedding("==blue: **重点** 和 $x$ ==") == hash_embedding(" **重点** 和 $x$ "),
+        "highlight removal preserves body formatting and whitespace");
+  for (const std::string literal : {"`==red:literal==`", "$==red:literal==$", "$$==red:literal==$$",
+                                    "\\(==red:literal==\\)", "\\[==red:literal==\\]"})
+    check(hash_embedding(literal) != hash_embedding("literal"), "code and math own literal highlight syntax");
+  check(hash_embedding("$==red:literal==$") != hash_embedding("$literal$"),
+        "inline math literal markers do not become highlights");
+  check(hash_embedding("`==red:literal==`") != hash_embedding("`literal`"),
+        "inline code literal markers do not become highlights");
+  const std::string fenced = "```text\n==red:literal==\n```\n==green:正文==";
+  check(hash_embedding(fenced) == hash_embedding("```text\n==red:literal==\n```\n正文"),
+        "fenced code is literal while later ordinary highlights are removed");
+  check(hash_embedding("~~~\n==red:literal==\n~~~\n==green:正文==") ==
+            hash_embedding("~~~\n==red:literal==\n~~~\n正文"),
+        "tilde-fenced code is protected");
+  check(hash_embedding("$$\n==red:literal==\n$$\n==green:正文==") ==
+            hash_embedding("$$\n==red:literal==\n$$\n正文"),
+        "display math is protected");
+  check(hash_embedding("    ==red:literal==\n==green:正文==") == hash_embedding("    ==red:literal==\n正文"),
+        "indented code is protected");
+  for (const std::string whitespace : {"\u00a0", "\u3000", "\u2003", "\ufeff"})
+    check(hash_embedding("==red:" + whitespace + "==") != hash_embedding(whitespace),
+          "Unicode whitespace-only markers remain literal like the frontend");
+  check(hash_embedding("说明\n    ==red:重点==") == hash_embedding("说明\n    重点") &&
+            hash_embedding("- 概念\n    ==red:条件==") == hash_embedding("- 概念\n    条件"),
+        "indented paragraph and list continuations still strip actual highlights");
+  for (const auto &example : std::vector<std::pair<std::string, std::string>>{
+           {"> ```text\n> a ``` b\n> ==red:literal==\n> ```\n==green:正文==",
+            "> ```text\n> a ``` b\n> ==red:literal==\n> ```\n正文"},
+           {"- ```text\n  a ``` b\n  ==red:literal==\n  ```\n==green:正文==",
+            "- ```text\n  a ``` b\n  ==red:literal==\n  ```\n正文"},
+           {"1. ```text\n   a ``` b\n   ==red:literal==\n   ```\n==green:正文==",
+            "1. ```text\n   a ``` b\n   ==red:literal==\n   ```\n正文"},
+           {"> > ```text\n> > a ``` b\n> > ==red:literal==\n> > ```\n==green:正文==",
+            "> > ```text\n> > a ``` b\n> > ==red:literal==\n> > ```\n正文"},
+           {"> - ```text\n>   a ``` b\n>   ==red:literal==\n>   ```\n==green:正文==",
+            "> - ```text\n>   a ``` b\n>   ==red:literal==\n>   ```\n正文"},
+           {"> ```text\n> ==red:literal==\n==green:正文==", "> ```text\n> ==red:literal==\n正文"}})
+    check(hash_embedding(example.first) == hash_embedding(example.second),
+          "container fences protect code to their matching closure or container end");
+  for (const std::string rejected :
+       {"==purple:正文==", "==constructor:正文==", "==toString:正文==", "==RED:正文==", "==red:\n正文==",
+        "==red:\r正文==", "==red:   ==", "====", "==red:正文"})
+    check(hash_embedding(rejected) != hash_embedding("正文"),
+          "unknown colors, empty, multiline and unclosed highlights remain literal");
+  check(hash_embedding("====") != hash_embedding("") &&
+            hash_embedding("==red:   ==") != hash_embedding("   "),
+        "empty and whitespace-only markers are not erased");
+  check(hash_embedding("==purple:正文==") != hash_embedding("purple:正文"),
+        "unknown-color delimiters remain literal too");
+  check(hash_embedding("==red:跨\n行==") != hash_embedding("跨\n行"),
+        "multiline markers are not reduced to their body");
+  check(hash_embedding("==purple:正文== ==red:重点==") == hash_embedding("==purple:正文== 重点"),
+        "an unknown color does not consume the following valid marker");
+  check(hash_embedding("==red:跨\n行== ==blue:重点==") == hash_embedding("==red:跨\n行== 重点"),
+        "a multiline marker does not consume the following valid marker");
+  check(hash_embedding("==red: \n `$x$` == ==blue:重点==") == hash_embedding("==red: \n `$x$` == 重点"),
+        "a multiline marker wrapping inline nodes remains literal");
+  for (const std::string body : {" red:正文", "red1:正文", "红：正文"})
+    check(hash_embedding("==" + body + "==") == hash_embedding(body),
+          "only the documented letter-plus-ASCII-colon grammar declares a color");
+  const std::string left = "椭圆轨道中的天体运动与万有引力", right = "酸碱中和中的离子浓度与电荷守恒";
+  check(text_similarity("==red:" + left + "==", "==red:" + right + "==") == text_similarity(left, right),
+        "a shared color cannot create an artificial similarity");
+  check(text_similarity("==red:相同正文==", "==blue:相同正文==") > .999,
+        "changing colors does not reduce identical-content similarity");
+  const std::string large(70000, 'x');
+  check(hash_embedding("==red:" + large + "==") == hash_embedding(large),
+        "the large-text cache bypass also strips display markers");
+  std::string original = "==红:保留导出的原始标记==";
+  hash_embedding(original);
+  check(original == "==红:保留导出的原始标记==", "similarity preprocessing never mutates source text");
+}
+void highlight_chunk_tests() {
+  Db db(":memory:");
+  initialize(db);
+  db.query("INSERT INTO users(id,username,password_hash,role,created_at) VALUES(1,'chunks','test','user',?)",
+           {now()});
+  Store store(db, User{1, 0, "chunks", "user", now()});
+  std::string body;
+  for (int i = 0; i < 200; ++i)
+    body += "直角三角形勾股定理";
+  auto plain_note = store.save("note", {{"title", "长笔记"}, {"body_md", body}});
+  auto red_note = store.save("note", {{"title", "==red:长笔记=="}, {"body_md", "==red:" + body + "=="}});
+  auto blue_note = store.save("note", {{"title", "==blue:长笔记=="}, {"body_md", "==蓝:" + body + "=="}});
+  auto plain_problem = store.save("problem", {{"title", "长错题"},
+                                              {"subject", "数学"},
+                                              {"stem_md", body},
+                                              {"tags", Json::array({"长考点"})},
+                                              {"solution", {{"approach_md", body}, {"answer_md", body}}}});
+  auto color_problem = store.save(
+      "problem",
+      {{"title", "==green:长错题=="},
+       {"subject", "数学"},
+       {"stem_md", "==red:" + body + "=="},
+       {"tags", Json::array({"长考点"})},
+       {"solution", {{"approach_md", "==green:" + body + "=="}, {"answer_md", "==blue:" + body + "=="}}}});
+  const auto result = content_search(store, {{"query", "勾股定理"}, {"mode", "rag"}, {"limit", 100}});
+  Json by_entity = Json::object();
+  for (const auto &hit : result["hits"]) {
+    const auto id = std::to_string(number(hit["entity"], "id"));
+    by_entity[id][std::to_string(number(hit, "chunk_id") % 100000)] = {
+        {"text", hit["text"]}, {"score", hit["score"]}, {"kind", hit["kind"]}};
+    check(text(hit, "text").find("==") == std::string::npos,
+          "long display annotations are removed before search chunking");
+    if (hit["entity"]["id"] == red_note["id"])
+      check(hit["entity"]["title"] == red_note["title"] && hit["entity"]["body_md"] == red_note["body_md"],
+            "search note entity retains original highlighted Markdown");
+    if (hit["entity"]["id"] == color_problem["id"])
+      check(hit["entity"]["stem_md"] == color_problem["stem_md"],
+            "search problem entity retains original highlighted stem");
+  }
+  const auto &notes = by_entity.at(std::to_string(number(plain_note, "id")));
+  check(notes.size() > 1, "long highlighted regression really spans multiple search chunks");
+  check(notes == by_entity.at(std::to_string(number(red_note, "id"))) &&
+            notes == by_entity.at(std::to_string(number(blue_note, "id"))),
+        "long note text and scores are identical across colors and plain content");
+  check(by_entity.at(std::to_string(number(plain_problem, "id"))) ==
+            by_entity.at(std::to_string(number(color_problem, "id"))),
+        "problem stem summary, approach and answer are cleaned before truncation and chunking");
+  for (const std::string delimiter : {"`", "$"}) {
+    const auto literal_body = delimiter + std::string(805, 'x') + " ==red:literal== tail " + delimiter;
+    const auto plain_body = delimiter + std::string(805, 'x') + " literal tail " + delimiter;
+    auto literal = store.save("note", {{"title", "literal title"}, {"body_md", literal_body}});
+    auto plain = store.save("note", {{"title", "literal title"}, {"body_md", plain_body}});
+    auto hits = content_search(
+        store, {{"query", "literal tail"}, {"target", "notes"}, {"mode", "rag"}, {"limit", 100}})["hits"];
+    Json literal_tail, plain_tail;
+    for (const auto &hit : hits)
+      if (number(hit, "chunk_id") % 100000 == 2) {
+        if (hit["entity"]["id"] == literal["id"])
+          literal_tail = hit;
+        if (hit["entity"]["id"] == plain["id"])
+          plain_tail = hit;
+      }
+    check(!literal_tail.is_null() && !plain_tail.is_null(),
+          "literal regression has searchable second chunks");
+    check(text(literal_tail, "text").find("==red:literal==") != std::string::npos,
+          "math and code literal markers survive search chunking");
+    check(literal_tail["score"] != plain_tail["score"],
+          "already-cleaned chunks do not reinterpret literal markers after losing their opener");
+    check(store.get("note", number(literal, "id"))["body_md"] == literal_body,
+          "chunk cleaning does not change stored code or math");
+  }
+}
 } // namespace
 int main() {
   try {
+    highlight_similarity_tests();
+    highlight_chunk_tests();
     Db db(":memory:");
     initialize(db);
     db.query("INSERT INTO users(id,username,password_hash,role,created_at) "

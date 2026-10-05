@@ -77,6 +77,32 @@ test('formula titles and colored Markdown survive MCP, note versions, export and
     assert.equal(exported.data.problems[0].stem_md, stem);
     assert.ok(exported.data.note_versions.some((version) => version.body_md === stem));
 
+    const concept = '先配方识别二次函数顶点，再判断开口方向与最小值。';
+    const conceptA = (await request('/api/v1/notes', {token: owner.token, method: 'POST', body: {title: '二次函数复习甲', body_md: concept, subject: '数学', ...audit}})).node;
+    const conceptB = await request('/api/v1/notes', {token: owner.token, method: 'POST', body: {title: '二次函数复习乙', body_md: concept, subject: '数学', ...audit}});
+    const beforeColor = conceptB.related.find((hit) => hit.entity.kind === 'note' && hit.entity.id === conceptA.id);
+    assert.ok(beforeColor?.linked, 'the shared concept should have an automatic association');
+    for (const color of ['red', 'green', 'blue', 'yellow', '红', '绿', '蓝', '黄']) {
+      const updated = await request(`/api/v1/notes/${conceptB.node.id}`, {token: owner.token, method: 'PATCH', body: {title: `==${color}:二次函数复习乙==`, body_md: `==${color}:${concept}==`, ...audit}});
+      const afterColor = updated.related.find((hit) => hit.entity.kind === 'note' && hit.entity.id === conceptA.id);
+      assert.equal(afterColor?.score, beforeColor.score, `color ${color} must not alter similarity`);
+      assert.equal(afterColor?.linked, true);
+      const storedColor = await request(`/api/v1/notes/${conceptB.node.id}`, {token: reader.token});
+      assert.equal(storedColor.body_md, `==${color}:${concept}==`, 'display and export keep the source markup');
+    }
+
+    const longBody = '先配方识别二次函数顶点，再判断开口方向与最小值。'.repeat(150);
+    const longNote = (await request('/api/v1/notes', {token: owner.token, method: 'POST', body: {title: '长笔记切片', body_md: longBody, subject: '数学', ...audit}})).node;
+    const searchLong = async () => {
+      const result = await request('/api/v1/search', {token: reader.token, method: 'POST', body: {query: '配方 顶点 开口方向', mode: 'rag', target: 'notes', limit: 100}});
+      return result.hits.filter((hit) => hit.entity.kind === 'note' && hit.entity.id === longNote.id)
+        .map(({chunk_id, text, score}) => ({chunk_id, text, score})).sort((a, b) => a.chunk_id - b.chunk_id);
+    };
+    const beforeChunks = await searchLong();
+    assert.ok(beforeChunks.length > 1, 'the regression must exercise a marker that spans multiple chunks');
+    await request(`/api/v1/notes/${longNote.id}`, {token: owner.token, method: 'PATCH', body: {body_md: `==blue:${longBody}==`, ...audit}});
+    assert.deepEqual(await searchLong(), beforeChunks, 'valid color markup must be removed before RAG chunking');
+
     const prompt = await request('/mcp', {token: owner.token, method: 'POST', body: {jsonrpc: '2.0', id: 2, method: 'prompts/get', params: {name: 'upload_mistake'}}});
     assert.match(prompt.result.messages[0].content.text, /==red:易错==/);
     assert.match(prompt.result.messages[0].content.text, /a_\{n\+1\}/);
