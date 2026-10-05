@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../api.ts";
 import { useAuth } from "../auth.tsx";
 import type { ProblemSummary } from "@mistakebook/shared";
+import { InlineMath } from "../components/MarkdownMath.tsx";
 
 export function ProblemsPage() {
   const { user } = useAuth();
@@ -80,7 +81,7 @@ export function ProblemsPage() {
           <article className="card" key={item.id}>
             <Link className="card-body" to={`/problems/${item.id}`}>
               <div className="card-top">
-                <strong>{item.title}</strong>
+                <strong><InlineMath>{item.title}</InlineMath></strong>
               </div>
               <div className="meta">
                 {item.subject}

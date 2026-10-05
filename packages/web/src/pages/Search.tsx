@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import type { SearchHit } from "@mistakebook/shared";
 import { api } from "../api.ts";
-import { MarkdownMath } from "../components/MarkdownMath.tsx";
+import { InlineMath, MarkdownMath } from "../components/MarkdownMath.tsx";
 
 export function SearchPage() {
   const [query, setQuery] = useState("");
@@ -75,7 +75,7 @@ export function SearchPage() {
           return (
             <article className="hit" key={hit.chunk_id}>
               <div className="card-top">
-                <Link to={href}>{entity.title}</Link>
+                <Link to={href}><InlineMath>{entity.title}</InlineMath></Link>
                 <span className="muted">
                   {kindLabel} · {entity.subject ?? "未分科"}
                 </span>

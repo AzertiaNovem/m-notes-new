@@ -6,7 +6,8 @@
  * as an escaped `[`, so `\[ \angle ... \]` and bracket blocks like
  * `[ \n \angle ... \n ]` otherwise print as raw TeX. Unicode subscripts
  * such as H₂O pick up a wide CJK glyph; lift those (and ASCII H_2O) into
- * `$H_2O$` so KaTeX typesets the subscript.
+ * `$H_2O$` so KaTeX typesets the subscript. Bare runs such as `a_{n+1}`
+ * and `2^{n+1}` inside a title are wrapped the same way.
  */
 
 const SUBSCRIPTS: Record<string, string> = {
@@ -133,6 +134,30 @@ function wrapDisplay(inner: string): string {
   return `$$\n${body}\n$$`;
 }
 
+const BARE_TEX_RUN_RE = /^[A-Za-z0-9_^{}()[\]+\-=*/.,|<>\\·⋅×]+/;
+
+function containsBareTex(slice: string): boolean {
+  if (/\\[a-zA-Z]+/.test(slice)) return true;
+  if (/_\{/.test(slice) || /_\d/.test(slice)) return true;
+  if (/(^|[^A-Za-z0-9])[A-Za-z]{1,3}_[A-Za-z]/.test(slice)) return true;
+  if (/(^|[^A-Za-z0-9])([A-Za-z]{1,3}|\d+)\^(\{|\d|\\|[A-Za-z])/.test(slice)) return true;
+  return false;
+}
+
+function bareTexRunLength(rest: string): number {
+  if (!/^[A-Za-z0-9\\]/.test(rest)) return 0;
+  const match = rest.match(BARE_TEX_RUN_RE);
+  if (!match) return 0;
+  const slice = match[0].replace(/[+\-=*/.,|<>·⋅×]+$/g, "");
+  if (!slice || !containsBareTex(slice)) return 0;
+  return slice.length;
+}
+
+function wrapBareTex(slice: string): string {
+  const tex = slice.replace(/[·⋅]/g, "\\cdot ").replace(/×/g, "\\times ");
+  return `$${tex}$`;
+}
+
 function consumeFence(src: string, i: number): number {
   const fence = src.startsWith("```", i) ? "```" : src.startsWith("~~~", i) ? "~~~" : "";
   if (!fence) return -1;
@@ -147,6 +172,26 @@ function consumeInlineCode(src: string, i: number): number {
   const fence = src.slice(i, i + n);
   const end = src.indexOf(fence, i + n);
   return end === -1 ? -1 : end + n;
+}
+
+/** Keep links and their destinations intact when recognizing bare math runs. */
+function consumeMarkdownLink(src: string, i: number): number {
+  if (src[i] !== "[") return -1;
+  const labelEnd = nextUnescaped(src, "]", i + 1);
+  if (labelEnd === -1) return -1;
+  const open = src[labelEnd + 1];
+  if (open === "[") {
+    const end = nextUnescaped(src, "]", labelEnd + 2);
+    return end === -1 ? -1 : end + 1;
+  }
+  if (open !== "(") return -1;
+  let depth = 1;
+  for (let j = labelEnd + 2; j < src.length; j += 1) {
+    if (src[j] === "\\") j += 1;
+    else if (src[j] === "(") depth += 1;
+    else if (src[j] === ")" && --depth === 0) return j + 1;
+  }
+  return -1;
 }
 
 function consumeLineBracketTex(src: string, i: number): { end: number; inner: string } | null {
@@ -199,6 +244,20 @@ export function normalizeMarkdownMath(markdown: string): string {
     if (codeEnd !== -1) {
       out += src.slice(i, codeEnd);
       i = codeEnd;
+      continue;
+    }
+
+    const linkEnd = consumeMarkdownLink(src, i);
+    if (linkEnd !== -1) {
+      out += src.slice(i, linkEnd);
+      i = linkEnd;
+      continue;
+    }
+
+    const url = src.slice(i).match(/^(?:https?:\/\/|mailto:)[^\s<>]+/i);
+    if (url) {
+      out += url[0];
+      i += url[0].length;
       continue;
     }
 
@@ -276,11 +335,46 @@ export function normalizeMarkdownMath(markdown: string): string {
         i += underscore[0].length;
         continue;
       }
+      if (!/[/\uFF0F]/.test(prev)) {
+        const bareLen = bareTexRunLength(rest);
+        if (bareLen > 0) {
+          out += wrapBareTex(rest.slice(0, bareLen));
+          i += bareLen;
+          continue;
+        }
+      }
     }
 
     out += src[i];
     i += 1;
   }
 
+  return out;
+}
+
+/** Use the same math normalization in headings while keeping every formula inline. */
+export function normalizeTitleMath(title: string): string {
+  const src = normalizeMarkdownMath(title ?? "");
+  let i = 0;
+  let out = "";
+  while (i < src.length) {
+    const fenceEnd = consumeFence(src, i);
+    const codeEnd = fenceEnd !== -1 ? fenceEnd : consumeInlineCode(src, i);
+    if (codeEnd !== -1) {
+      out += src.slice(i, codeEnd);
+      i = codeEnd;
+      continue;
+    }
+    if (src.startsWith("$$", i)) {
+      const end = nextUnescaped(src, "$$", i + 2);
+      if (end !== -1) {
+        out += `$${src.slice(i + 2, end).replace(/\s*\n\s*/g, " ").trim()}$`;
+        i = end + 2;
+        continue;
+      }
+    }
+    out += src[i] === "\n" || src[i] === "\r" ? " " : src[i];
+    i += 1;
+  }
   return out;
 }

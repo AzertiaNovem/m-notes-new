@@ -1,0 +1,33 @@
+.md-inline {
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: middle;
+  line-height: normal;
+  overflow-wrap: anywhere;
+  overflow-x: auto;
+  padding-block: 0.25em;
+}
+
+.md-inline .katex {
+  font-size: 1em;
+}
+
+.md-inline .katex-display {
+  display: inline-block;
+  max-width: 100%;
+  margin: 0;
+  vertical-align: middle;
+}
+
+.page-head { min-width: 0; max-width: 100%; }
+.page-head h1 { max-width: 100%; min-width: 0; }
+.card-top > a, .card-top > strong { min-width: 0; max-width: 100%; }
+.card-top > a { flex: 1; }
+.card-top > strong, .page-head h1 .md-inline, .card-top .md-inline { display: block; }
+.diff-heads strong { min-width: 0; overflow-wrap: normal; word-break: normal; }
+.diff-heads .md-inline, .diff-meta .md-inline { display: block; max-width: 100%; }
+.diff-meta del, .diff-meta ins { display: inline-block; max-width: 100%; vertical-align: bottom; }
+
+@media print {
+  .md-inline, .md-inline .katex-display { overflow: visible; }
+}

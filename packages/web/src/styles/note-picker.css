@@ -1,0 +1,70 @@
+.notes-page .notes-layout { grid-template-columns: minmax(0, 1fr); }
+.notes-page .note-toc { display: none; }
+.notes-page .notes-error { grid-column: 1 / -1; margin: 0; }
+.notes-page .note-toc, .notes-page .note-reader { min-width: 0; }
+.notes-page .toc-tree > li > a { max-width: 100%; }
+.notes-page .change-log-meta, .notes-page .change-log-meta .md-inline { max-width: 100%; }
+
+.note-picker {
+  position: sticky;
+  top: var(--safe-top, 0px);
+  z-index: 5;
+  background: var(--bg);
+  padding: 4px 0 8px;
+}
+button.note-picker-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+.note-picker-label { min-width: 0; flex: 1; }
+.note-picker-label .md-inline, .note-picker-menu .md-inline { display: block; }
+.note-picker-chevron { color: var(--muted); flex: none; }
+.note-picker-btn[aria-expanded="true"] .note-picker-chevron { transform: rotate(180deg); }
+.note-picker-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% - 4px);
+  max-height: 40vh;
+  max-height: min(40dvh, 420px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  z-index: 6;
+  box-shadow: 0 8px 24px rgba(29, 26, 22, 0.12);
+}
+.note-picker-menu a {
+  display: block;
+  min-height: 44px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  padding-right: 12px;
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+}
+.note-picker-menu a:last-child { border-bottom: 0; }
+.note-picker-menu a.toc-active { background: #e8f4ef; font-weight: 600; }
+.note-picker-btn:focus-visible, .note-picker-menu a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+.note-picker-empty { margin: 0; padding: 12px; }
+
+@media (min-width: 800px) {
+  .notes-page .notes-layout { grid-template-columns: 240px minmax(0, 1fr); align-items: start; }
+  .note-picker { display: none; }
+  .notes-page .note-toc { display: block; position: sticky; top: 12px; }
+}
+
+@media print {
+  .note-picker { display: none; }
+}

@@ -75,7 +75,7 @@ export {
 
 export { sanitizeSvg } from "./sanitize-svg.ts";
 export { splitMarkdownLines, diffLines, diffMarkdown } from "./line-diff.ts";
-export { looksLikeTex, normalizeMarkdownMath } from "./markdown-math.ts";
+export { looksLikeTex, normalizeMarkdownMath, normalizeTitleMath } from "./markdown-math.ts";
 
 export type {
   SearchMode,
@@ -155,3 +155,6 @@ export type {
 } from "./schemas.ts";
 
 export type { LineHunk, LineHunkKind } from "./line-diff.ts";
+
+export { HIGHLIGHT_COLORS, normalizeHighlightColor, readHighlight } from "./highlight.ts";
+export type { HighlightColor, HighlightMatch } from "./highlight.ts";

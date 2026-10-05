@@ -1,19 +1,55 @@
-import { normalizeMarkdownMath, sanitizeSvg } from "@mistakebook/shared";
-import ReactMarkdown from "react-markdown";
+import { normalizeMarkdownMath, normalizeTitleMath, sanitizeSvg } from "@mistakebook/shared";
+import ReactMarkdown, { type Components } from "react-markdown";
+import type { ReactNode } from "react";
 import rehypeKatex from "rehype-katex";
 import remarkMath from "remark-math";
 import "katex/dist/katex.min.css";
 import "katex/contrib/mhchem";
+import "../styles/math-title.css";
+import "../styles/highlight.css";
+import { remarkHighlight } from "./remarkHighlight.ts";
 
 const KATEX_OPTS = { throwOnError: false, strict: false, trust: false, output: "html" as const };
+const REMARK_PLUGINS = [remarkHighlight, remarkMath];
+
+const inlineChildren = ({ children }: { children?: ReactNode }) => <>{children}</>;
+const INLINE_COMPONENTS: Components = {
+  p: inlineChildren,
+  h1: inlineChildren,
+  h2: inlineChildren,
+  h3: inlineChildren,
+  h4: inlineChildren,
+  h5: inlineChildren,
+  h6: inlineChildren,
+  ul: inlineChildren,
+  ol: inlineChildren,
+  li: inlineChildren,
+  blockquote: inlineChildren,
+  a: inlineChildren,
+  img: () => null,
+};
 
 export function MarkdownMath({ children }: { children: string }) {
   return (
     <div className="md">
-      <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, KATEX_OPTS]]}>
+      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={[[rehypeKatex, KATEX_OPTS]]}>
         {normalizeMarkdownMath(children ?? "")}
       </ReactMarkdown>
     </div>
+  );
+}
+
+export function InlineMath({ children }: { children: string }) {
+  return (
+    <span className="md md-inline">
+      <ReactMarkdown
+        remarkPlugins={REMARK_PLUGINS}
+        rehypePlugins={[[rehypeKatex, KATEX_OPTS]]}
+        components={INLINE_COMPONENTS}
+      >
+        {normalizeTitleMath(children ?? "")}
+      </ReactMarkdown>
+    </span>
   );
 }
 

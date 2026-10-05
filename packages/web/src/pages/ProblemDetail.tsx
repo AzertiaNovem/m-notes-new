@@ -4,7 +4,7 @@ import type { ProblemDetail } from "@mistakebook/shared";
 import { api } from "../api.ts";
 import { useAuth } from "../auth.tsx";
 import { ChangeLogs } from "../components/ChangeLogs.tsx";
-import { InlineSvg, MarkdownMath } from "../components/MarkdownMath.tsx";
+import { InlineMath, InlineSvg, MarkdownMath } from "../components/MarkdownMath.tsx";
 
 export function ProblemDetailPage() {
   const { user } = useAuth();
@@ -70,7 +70,7 @@ export function ProblemDetailPage() {
         <Link to="/">题库</Link> / {problem.subject}
       </p>
       <div className="page-head">
-        <h1>{problem.title}</h1>
+        <h1><InlineMath>{problem.title}</InlineMath></h1>
       </div>
       <div className="tags">
         {problem.tags.map((name) => (
@@ -100,7 +100,7 @@ export function ProblemDetailPage() {
               if (other.kind !== "note") return null;
               return (
                 <li key={link.id}>
-                  <Link to={`/notes/${other.id}`}>{other.title}</Link>
+                  <Link to={`/notes/${other.id}`}><InlineMath>{other.title}</InlineMath></Link>
                   <span className="muted">
                     {link.via === "embedding" ? " · 向量" : " · 手工"}
                     {link.label ? ` · ${link.label}` : ""}

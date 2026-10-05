@@ -405,7 +405,7 @@ std::vector<ToolSpec> specs() {
        {"subject", "names"},
        false},
       {"upsert_problem",
-       "创建或更新错题；先查询分类，使用LaTeX Markdown，思路与答案分开，图仅SVG",
+       "创建或更新错题；先查询分类，标题和正文支持LaTeX，重点可用==red:文字==染色，思路与答案分开，图仅SVG",
        "POST",
        "/api/v1/problems",
        problemProps,
@@ -429,7 +429,7 @@ std::vector<ToolSpec> specs() {
       {"list_note_toc", "查看笔记目录", "GET", "/api/v1/notes/toc", Json::object(), {}, false},
       {"get_note_node", "查看笔记", "GET", "/api/v1/notes/{id}", {{"id", num}}, {"id"}, false},
       {"upsert_note_node",
-       "创建或更新笔记",
+       "创建或更新笔记；标题支持LaTeX，正文重点可用==重点==或==red:文字==染色",
        "POST",
        "/api/v1/notes",
        {{"id", num},
@@ -545,7 +545,10 @@ Json mcp(Store &s, const Json &b) {
                         {{"type", "text"},
                          {"text", "先在对话中OCR，禁止上传照片或图片URL。先list_"
                                   "taxonomy复用学科考点，再upsert_problem。题干使用LaTeX "
-                                  "Markdown，图用手写SVG。approach_md只写方法分析，answer_"
+                                  "Markdown，标题可用$a_n$或a_{n+1}。重点可用==重点==（黄底）、"
+                                  "==red:易错==、==green:结论==、==blue:条件==，也支持红、绿、蓝、黄中文别名。"
+                                  "染色可包住行内公式如==red:$a_{n+1}$==，不要把标记写在$...$里面。"
+                                  "只标几处重点，图用手写SVG。approach_md只写方法分析，answer_"
                                   "md写完整计算与答案。每次提交填写editor_tool和change_summary。"}}}}})}};
   else
     return {{"jsonrpc", "2.0"}, {"id", id}, {"error", {{"code", -32601}, {"message", "Method not found"}}}};

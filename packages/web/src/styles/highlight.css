@@ -1,0 +1,14 @@
+.md mark.hl {
+  background: #f7e7c6;
+  color: inherit;
+  padding: 0 0.15em;
+  border-radius: 2px;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+.md mark.hl-red { background: #fde8e4; color: #9a3412; }
+.md mark.hl-green { background: #e3f6ea; color: #0f6e56; }
+.md mark.hl-blue { background: #e8f4ff; color: #245b8c; }
+.md mark.hl-yellow { background: #f7e7c6; color: inherit; }
+.md mark.hl .katex { color: inherit; }

@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import type { PrintBookDetail, PrintBookSummary, PrintPlan, TagRef } from "@mistakebook/shared";
 import { api, type PrintDocument } from "../api.ts";
 import { useAuth } from "../auth.tsx";
-import { InlineSvg, MarkdownMath } from "../components/MarkdownMath.tsx";
+import { InlineMath, InlineSvg, MarkdownMath } from "../components/MarkdownMath.tsx";
 
 export function PrintPage() {
   const { id } = useParams();
@@ -120,7 +120,7 @@ function PrintBookList() {
           <article className="card" key={book.id}>
             <Link className="card-body" to={`/print/${book.id}`}>
               <div className="card-top">
-                <strong>{book.title}</strong>
+                <strong><InlineMath>{book.title}</InlineMath></strong>
                 <span className="muted">{book.page_count} 页</span>
               </div>
               <div className="meta">
@@ -224,10 +224,10 @@ function PrintBookView({ bookId }: { bookId: number }) {
   return (
     <article className="detail">
       <p className="crumb">
-        <Link to="/print">纸质本</Link> / {book.title}
+        <Link to="/print">纸质本</Link> / <InlineMath>{book.title}</InlineMath>
       </p>
       <div className="page-head">
-        <h1>{book.title}</h1>
+        <h1><InlineMath>{book.title}</InlineMath></h1>
         <p className="muted">{book.page_count} 页</p>
       </div>
       <div className="meta">
@@ -293,7 +293,7 @@ function PrintBookView({ bookId }: { bookId: number }) {
                 </button>
               </td>
               <td>{page.subject}</td>
-              <td>{page.titles.join("、") || "（续页）"}</td>
+              <td>{page.titles.length ? <InlineMath>{page.titles.join("、")}</InlineMath> : "（续页）"}</td>
               <td>{page.stale ? <span className="tag warn-tag">已变</span> : null}</td>
             </tr>
           ))}
@@ -338,7 +338,7 @@ export function PrintDocumentPage() {
     <section className="print-document">
       <div className="print-controls">
         <p className="crumb"><Link to={`/print/${bookId}`}>返回纸质本</Link></p>
-        <div className="page-head"><h1>{document?.book.title ?? "打印预览"}</h1></div>
+        <div className="page-head"><h1><InlineMath>{document?.book.title ?? "打印预览"}</InlineMath></h1></div>
         <p className="muted">预览显示保存的归档内容。每个逻辑页可能跨多张纸；打印时选择 A4，可在系统打印窗口另存为 PDF。</p>
         <button type="button" disabled={!document?.pages.length} onClick={() => window.print()}>打印 / 另存为 PDF</button>
         {error ? <p className="error" role="alert">{error}</p> : null}
@@ -347,10 +347,10 @@ export function PrintDocumentPage() {
       </div>
       {document?.pages.map((page) => (
         <section className="print-logical-page" key={page.page_no}>
-          <div className="print-page-heading"><span>{document.book.title} · {page.subject}</span><span>逻辑页 {page.page_no}</span></div>
+          <div className="print-page-heading"><span><InlineMath>{document.book.title}</InlineMath> · {page.subject}</span><span>逻辑页 {page.page_no}</span></div>
           {page.problems.map((problem) => (
             <article className="print-problem" key={problem.id}>
-              <h1>{problem.title}</h1>
+              <h1><InlineMath>{problem.title}</InlineMath></h1>
               <p className="meta">{problem.subject}{problem.source ? ` · ${problem.source}` : ""}</p>
               {problem.tags.length ? <p className="meta">考点：{problem.tags.join("、")}</p> : null}
               <h2>题干</h2>

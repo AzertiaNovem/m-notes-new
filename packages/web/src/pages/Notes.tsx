@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import type { NoteNodeDetail, NoteTocNode, NoteVersion, NoteVersionDiff, NoteVersionSummary } from "@mistakebook/shared";
 import { api } from "../api.ts";
-import { MarkdownMath } from "../components/MarkdownMath.tsx";
+import { InlineMath, MarkdownMath } from "../components/MarkdownMath.tsx";
 import { NoteSplitDiff } from "../components/NoteSplitDiff.tsx";
+import "../styles/note-picker.css";
 
 type Reader =
   | { kind: "current" }
@@ -82,19 +83,21 @@ export function NotesPage() {
     reader.kind === "version" ? reader.data.body_md : node?.body_md;
 
   return (
-    <section className="notes-layout">
+    <section className="notes-page">
+      <NotePicker tree={tree} selectedId={selectedId} />
+      <div className="notes-layout">
+      {error ? <p className="error notes-error">{error}</p> : null}
       <aside className="note-toc">
         <div className="page-head">
           <h1>笔记</h1>
         </div>
-        <p className="muted">目录由 MCP write_note 维护。这里只浏览，可打开历史版本。</p>
-        {error ? <p className="error">{error}</p> : null}
+        <p className="muted">目录由 MCP upsert_note_node 维护。这里只浏览，可打开历史版本。</p>
         {!tree.length && !error ? <p className="empty">还没有笔记节点。</p> : null}
         <ul className="toc-tree">{tree.map((item) => <TocItem key={item.id} node={item} selectedId={selectedId} />)}</ul>
       </aside>
       <article className="detail note-reader">
         {!node ? (
-          <p className="muted">从左侧目录选一条笔记。</p>
+          <p className="muted">从目录选择一条笔记。</p>
         ) : (
           <>
             <p className="crumb">
@@ -102,7 +105,7 @@ export function NotesPage() {
               {node.subject ? ` / ${node.subject}` : ""}
             </p>
             <div className="page-head">
-              <h1>{title}</h1>
+              <h1>{title ? <InlineMath>{title}</InlineMath> : "（无标题）"}</h1>
             </div>
             {reader.kind === "version" ? (
               <div className="version-banner">
@@ -146,7 +149,7 @@ export function NotesPage() {
                     const href = other.kind === "note" ? `/notes/${other.id}` : `/problems/${other.id}`;
                     return (
                       <li key={link.id}>
-                        <Link to={href}>{other.title}</Link>
+                        <Link to={href}><InlineMath>{other.title}</InlineMath></Link>
                         <span className="muted">
                           {" "}
                           · {other.kind === "note" ? "笔记" : "题目"}
@@ -170,7 +173,7 @@ export function NotesPage() {
                       <div className="change-log-meta">
                         <span className="tag">{log.editor_tool}</span>
                         <time dateTime={log.changed_at}>{formatChangedAt(log.changed_at)}</time>
-                        {log.title ? <span className="muted">{log.title}</span> : null}
+                        {log.title ? <span className="muted"><InlineMath>{log.title}</InlineMath></span> : null}
                       </div>
                       <p>{log.change_summary}</p>
                       <div className="version-actions">
@@ -196,7 +199,127 @@ export function NotesPage() {
           </>
         )}
       </article>
+      </div>
     </section>
+  );
+}
+
+function flattenToc(nodes: NoteTocNode[], depth = 0): { node: NoteTocNode; depth: number }[] {
+  const items: { node: NoteTocNode; depth: number }[] = [];
+  for (const node of nodes) {
+    items.push({ node, depth });
+    items.push(...flattenToc(node.children, depth + 1));
+  }
+  return items;
+}
+
+function NotePicker({ tree, selectedId }: { tree: NoteTocNode[]; selectedId: number | null }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuId = useId();
+  const items = useMemo(() => flattenToc(tree), [tree]);
+  const selected = items.find((item) => item.node.id === selectedId) ?? null;
+
+  useEffect(() => {
+    setOpen(false);
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const options = rootRef.current?.querySelectorAll<HTMLAnchorElement>('[role="option"]');
+    const active = rootRef.current?.querySelector<HTMLAnchorElement>('[aria-selected="true"]');
+    const initial = active ?? options?.[0];
+    initial?.focus({ preventScroll: true });
+    if (initial) {
+      const menu = initial.parentElement;
+      if (menu) menu.scrollTop = Math.max(0, initial.offsetTop - menu.clientHeight / 2 + initial.offsetHeight / 2);
+    }
+
+    function onPointerDown(event: PointerEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function onFocusIn(event: FocusEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Tab") {
+        setOpen(false);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setOpen(false);
+        buttonRef.current?.focus({ preventScroll: true });
+        return;
+      }
+      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+      const nextOptions = Array.from(rootRef.current?.querySelectorAll<HTMLAnchorElement>('[role="option"]') ?? []);
+      if (!nextOptions.length) return;
+      event.preventDefault();
+      const currentIndex = nextOptions.findIndex((option) => option === document.activeElement);
+      const index = event.key === "Home" ? 0 : event.key === "End" ? nextOptions.length - 1 :
+        currentIndex < 0 ? (event.key === "ArrowUp" ? nextOptions.length - 1 : 0) :
+        event.key === "ArrowUp" ? (currentIndex - 1 + nextOptions.length) % nextOptions.length :
+          (currentIndex + 1) % nextOptions.length;
+      nextOptions[index]?.focus();
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("focusin", onFocusIn);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("focusin", onFocusIn);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open, items]);
+
+  return (
+    <div className="note-picker" ref={rootRef}>
+      <button
+        ref={buttonRef}
+        type="button"
+        className="note-picker-btn"
+        aria-label="选择笔记"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-controls={open ? menuId : undefined}
+        onClick={() => setOpen((value) => !value)}
+        onKeyDown={(event) => {
+          if (!open && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
+      >
+        <span className="note-picker-label">
+          {selected ? <InlineMath>{selected.node.title}</InlineMath> : "选择笔记"}
+        </span>
+        <span className="note-picker-chevron" aria-hidden="true">▾</span>
+      </button>
+      {open ? (
+        <div className="note-picker-menu" id={menuId} role="listbox" aria-label="笔记目录">
+          {items.length ? items.map(({ node, depth }) => (
+            <Link
+              key={node.id}
+              role="option"
+              tabIndex={-1}
+              aria-selected={node.id === selectedId}
+              className={node.id === selectedId ? "toc-active" : undefined}
+              style={{ paddingLeft: 12 + Math.min(depth, 8) * 16 }}
+              to={`/notes/${node.id}`}
+              onClick={() => {
+                setOpen(false);
+                buttonRef.current?.focus({ preventScroll: true });
+              }}
+            >
+              <InlineMath>{node.title}</InlineMath>
+            </Link>
+          )) : <p className="muted note-picker-empty">还没有笔记节点。</p>}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -204,7 +327,7 @@ function TocItem({ node, selectedId }: { node: NoteTocNode; selectedId: number |
   return (
     <li>
       <Link className={node.id === selectedId ? "toc-active" : undefined} to={`/notes/${node.id}`}>
-        {node.title}
+        <InlineMath>{node.title}</InlineMath>
       </Link>
       {node.children.length ? (
         <ul className="toc-tree">

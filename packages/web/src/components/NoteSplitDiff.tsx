@@ -1,4 +1,6 @@
 import type { NoteDiffHunk, NoteVersionDiff, NoteVersionRef } from "@mistakebook/shared";
+import type { ReactNode } from "react";
+import { InlineMath } from "./MarkdownMath.tsx";
 
 function formatChangedAt(value: string | null): string {
   if (!value) return "空";
@@ -7,10 +9,10 @@ function formatChangedAt(value: string | null): string {
   return date.toLocaleString("zh-CN", { hour12: false });
 }
 
-function sideLabel(ref: NoteVersionRef): string {
+function sideLabel(ref: NoteVersionRef): ReactNode {
   if (ref.source === "empty") return "（无上一版）";
   if (ref.source === "current") return "当前正文";
-  return `${ref.title} · ${formatChangedAt(ref.changed_at)}`;
+  return <>{ref.title ? <InlineMath>{ref.title}</InlineMath> : "（空）"}{" · "}{formatChangedAt(ref.changed_at)}</>;
 }
 
 type SplitRow = {
@@ -75,7 +77,7 @@ export function NoteSplitDiff({ diff }: { diff: NoteVersionDiff }) {
         <ul className="diff-meta">
           {diff.title_changed ? (
             <li>
-              标题：<del>{diff.from.title || "（空）"}</del> → <ins>{diff.to.title || "（空）"}</ins>
+              标题：<del>{diff.from.title ? <InlineMath>{diff.from.title}</InlineMath> : "（空）"}</del> → <ins>{diff.to.title ? <InlineMath>{diff.to.title}</InlineMath> : "（空）"}</ins>
             </li>
           ) : null}
           {diff.parent_changed ? (
