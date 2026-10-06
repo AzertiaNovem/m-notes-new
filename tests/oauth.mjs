@@ -11,6 +11,7 @@ import {setTimeout as sleep} from 'node:timers/promises';
 let server, directory, base, owner, readonly, client, otherClient, access, pendingCode, output='';
 const password='OAuth-test-2026-secret';
 const callback='https://client.example/callback?existing=1';
+const headerCallback='https://CALLBACK.EXAMPLE?existing=1;script-src=*';
 const verifier=randomBytes(48).toString('base64url');
 const challenge=createHash('sha256').update(verifier).digest('base64url');
 async function json(path,{method='GET',body,token,status=200}={}) {
@@ -25,7 +26,10 @@ function authParams(overrides={}) {return {client_id:client.client_id,redirect_u
 async function authForm(overrides={}) {
   const params=authParams(overrides);const response=await fetch(base+'/authorize?'+new URLSearchParams(params),{redirect:'manual'});const html=await response.text();assert.equal(response.status,200,html);
   const request_id=html.match(/name='request_id' value='([^']+)'/)?.[1];assert.ok(request_id);const cookie=response.headers.get('set-cookie').split(';')[0];assert.ok(response.headers.get('set-cookie').includes('HttpOnly'));assert.ok(response.headers.get('content-security-policy').includes("frame-ancestors 'none'"));
-  return {request_id,cookie,params,html};
+  assert.equal(response.headers.get('referrer-policy'),'same-origin','the form must send a verifiable Origin without leaking its URL across origins');
+  const formAction=response.headers.get('content-security-policy').split(';').map(x=>x.trim()).find(x=>x.startsWith('form-action '));
+  assert.equal(formAction,`form-action 'self' ${new URL(params.redirect_uri).origin}`,'the browser must be allowed to follow the registered callback after a form POST');
+  return {request_id,cookie,params,html,policy:response.headers.get('content-security-policy')};
 }
 async function authorize(account=owner,overrides={}) {
   const page=await authForm(overrides);const {response}=await form('/authorize',{request_id:page.request_id,username:account.user?.username??account.username,password,approve:'yes'},{cookie:page.cookie,status:303,json:false});
@@ -50,7 +54,7 @@ test('authorization and protected-resource discovery advertise S256 and audience
 test('dynamic registration restricts redirects and public client authentication',async()=>{
   for(const redirect of ['http://evil.example/cb','https://client.example/cb#fragment','https://user@client.example/cb','javascript:alert(1)','https://*.example/cb','https://%31%32%37.0.0.1/cb','https://client.example/\r\nInjected'])await json('/register',{method:'POST',body:{redirect_uris:[redirect]},status:400});
   await json('/register',{method:'POST',body:{redirect_uris:[callback],token_endpoint_auth_method:'client_secret_basic'},status:400});
-  client=await json('/register',{method:'POST',body:{client_name:'Test <script>alert(1)</script>',redirect_uris:[callback,'http://127.0.0.1:8888/callback'],token_endpoint_auth_method:'none'},status:201});assert.equal(client.client_secret,undefined);
+  client=await json('/register',{method:'POST',body:{client_name:'Test <script>alert(1)</script>',redirect_uris:[callback,headerCallback,'http://127.0.0.1:8888/callback'],token_endpoint_auth_method:'none'},status:201});assert.equal(client.client_secret,undefined);
   otherClient=await json('/register',{method:'POST',body:{redirect_uris:[callback]},status:201});
 });
 test('authorization validates exact redirects, resource, challenge, and scope',async()=>{
@@ -58,7 +62,9 @@ test('authorization validates exact redirects, resource, challenge, and scope',a
   await json('/authorize?'+new URLSearchParams(authParams({client_id:'missing'})),{status:401});
 });
 test('consent form escapes client names and binds approval to browser nonce',async()=>{
-  const page=await authForm();assert.ok(page.html.includes('&lt;script&gt;'));assert.ok(!page.html.includes('Test <script>'));
+  const page=await authForm({redirect_uri:headerCallback});assert.ok(page.html.includes('&lt;script&gt;'));assert.ok(!page.html.includes('Test <script>'));
+  assert.ok(!page.policy.includes('existing=') && !page.policy.includes('script-src='));
+  assert.ok(!page.policy.includes('https://client.example'),'other registered callbacks are not allowed by this form policy');
   await form('/authorize',{request_id:page.request_id,username:owner.user.username,password,approve:'yes'},{status:403});
   await form('/authorize',{request_id:page.request_id,username:owner.user.username,password:'wrong-password',approve:'yes'},{cookie:page.cookie,status:401,json:false});
   const {response}=await form('/authorize',{request_id:page.request_id,approve:'no'},{cookie:page.cookie,status:303,json:false});assert.equal(new URL(response.headers.get('location')).searchParams.get('error'),'access_denied');

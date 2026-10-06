@@ -635,6 +635,12 @@ chmod 600 /var/backups/mistakebook-alpha/mistakebook-backup.db
 
 本服务只接受已注册的公共客户端 ID、S256 PKCE 和正确的 MCP resource。resource 应为 `https://m-notes-alpha.missazertia.com/mcp`。当前不支持把任意 HTTPS URL 当作 CIMD client_id，也不使用 client_secret。Codex 可选择 DCR 注册；若其他客户端无法配合，使用支持 Bearer 请求头的方式。
 
+### OAuth 授权后出现表单过期或浏览器校验失败
+
+旧版授权页曾将 `form-action` 限制为本站，Chromium 会因此拦截登录成功后的外部回调；授权表单已被消费，再次提交便显示 `Authorization form expired or browser verification failed`。2026 年 10 月 6 日已修正回调放行及重复 Referrer-Policy 问题，并用真实浏览器验证本机和 HTTPS 回调。
+
+更新后应关闭旧授权页面，从客户端重新发起 OAuth，不要重新提交旧页面。该错误仍可能表示表单超过十分钟、已使用，或浏览器没有带回对应 Cookie，安全校验不会被跳过。Bearer 模式直接填写 `Bearer 实际令牌`；`${变量名}` 是环境变量引用，不能把令牌本身放在花括号里。
+
 ### 搜索结果不好或没有结果
 
 先清除学科和考点限制，使用明确词语选择“仅关键词”，再尝试混合检索。仅笔记搜索不能携带考点筛选。当前本地特征不是大型语义 Embedding，长篇抽象提问、复杂同义改写或跨语言相似度不保证准确；增加实际出现在资料中的词语更容易定位。

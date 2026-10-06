@@ -118,6 +118,8 @@ C++ 测试覆盖内容、标签、搜索、笔记树、版本差异、关联与�
 
 标题与染色测试覆盖裸上下标、公式定界、代码与链接保护、颜色别名、无效和跨行标记、行内公式渲染，以及 Markdown 在笔记版本、导出和打印快照中的完整保存。
 
+`tests/browser/oauth.mjs` 提供真实 Chromium 授权回归，覆盖本机与 HTTPS 回调、密码重试、取消授权、PKCE 兑换及 MCP 工具读取。它需要现有 Playwright 安装（可通过 `PLAYWRIGHT_MODULE` 指定）和 Chromium（可通过 `BROWSER_EXECUTABLE` 指定），不属于只依赖 Node 内置模块的后端接口测试。
+
 备份运行中的 SQLite 请使用 SQLite backup API 或 `.backup`；不要只复制活动数据库主文件而忽略 WAL。服务停止后可完整复制数据目录。新项目不会自行部署到第一个项目的服务器。
 
 ## MCP 连接
@@ -127,6 +129,8 @@ C++ 测试覆盖内容、标签、搜索、笔记树、版本差异、关联与�
 原 Node stdio MCP 入口没有复制到新版；客户端通过上述 HTTP 端点连接 C++ 服务。
 
 同时提供 OAuth 授权服务器发现、动态公共客户端注册、授权码 + S256 PKCE、刷新令牌轮换及撤销。将 `.env` 中的 `PUBLIC_URL` 配置为实际服务的外部地址；本机默认 `http://localhost:8080`。OAuth token 仅用于绑定的 `/mcp` 资源，不能拿来管理网页账户。第三方客户端需要提供 resource 参数；回调 URI 必须与注册值一致，只允许 HTTPS 或 loopback HTTP。
+
+授权页的 `form-action` 只放行本站和本次已注册回调的 origin，使 Chromium 能完成表单提交后的跨域跳转；单一的 `Referrer-Policy: same-origin` 保持提交 Origin 可校验，同时不向跨域回调泄露原页面地址。Cookie、一次性表单和 PKCE 校验仍然保留。
 
 新版没有复制旧项目的远程服务器配置，也没有对真实第三方连接器进行上线测试。这里支持动态客户端注册，不支持把任意 HTTPS URL 当作 client_id 后由服务器抓取客户端元数据（CIMD）。需要该机制的客户端须改用已注册 client_id 或 Bearer 配置。
 

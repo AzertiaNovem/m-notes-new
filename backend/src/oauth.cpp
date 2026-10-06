@@ -62,8 +62,8 @@ std::string url_origin(const std::string &value) {
   auto scheme = value.find("://");
   if (scheme == std::string::npos)
     return {};
-  auto slash = value.find('/', scheme + 3);
-  return slash == std::string::npos ? value : value.substr(0, slash);
+  auto end = value.find_first_of("/?#", scheme + 3);
+  return lower_ascii(end == std::string::npos ? value : value.substr(0, end));
 }
 std::string escape_html(const std::string &value) {
   std::string out;
@@ -242,10 +242,17 @@ void render_form(httplib::Response &res, const Json &pending, const std::string 
           "type='password' autocomplete='current-password' maxlength='1024'><button class='allow' "
           "name='approve' value='yes'>登录并授权</button><button class='deny' name='approve' "
           "value='no'>取消</button></form></main></body></html>";
+  // Chromium also checks form-action on the 303 redirect after approval. The
+  // callback is from the registered, validated pending request, not POST data.
+  const auto callback_origin = url_origin(text(pending, "redirect_uri"));
   res.set_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action "
-                                            "'self'; frame-ancestors 'none'; base-uri 'none'");
+                                            "'self' " + callback_origin +
+                                            "; frame-ancestors 'none'; base-uri 'none'");
   res.set_header("X-Frame-Options", "DENY");
-  res.set_header("Referrer-Policy", "no-referrer");
+  // no-referrer makes a normal form POST use Origin: null in Chromium. Keep the
+  // same-origin POST verifiable without disclosing the URL to other origins.
+  res.headers.erase("Referrer-Policy");
+  res.set_header("Referrer-Policy", "same-origin");
   res.set_content(html, "text/html; charset=utf-8");
 }
 Json authorization(Db &db, const httplib::Request &req) {
